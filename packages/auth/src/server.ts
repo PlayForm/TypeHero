@@ -1,8 +1,8 @@
-import { PrismaAdapter } from '@next-auth/prisma-adapter';
-import type { Role, RoleTypes } from '@repo/db/types';
-import { getServerSession, type DefaultSession, type NextAuthOptions } from 'next-auth';
+import { PrismaAdapter } from '@auth/prisma-adapter';
+import type { Role, RoleTypes, User } from '@repo/db/types';
 import GitHubProvider from 'next-auth/providers/github';
 import { prisma } from '@repo/db';
+import NextAuth from './next-auth';
 
 export type { Session, DefaultSession as DefaultAuthSession } from 'next-auth';
 
@@ -13,15 +13,13 @@ export type { Session, DefaultSession as DefaultAuthSession } from 'next-auth';
  * @see https://next-auth.js.org/getting-started/typescript#module-augmentation
  */
 declare module 'next-auth' {
-  interface Session extends DefaultSession {
-    user: DefaultSession['user'] & {
-      id: string;
-      role: RoleTypes[];
-    };
+  interface Session {
+    user: User & { role: RoleTypes[] };
   }
+}
 
-  interface User {
-    createdAt: Date;
+declare module '@auth/core/adapters' {
+  interface AdapterUser extends User {
     roles: Role[];
   }
 }
@@ -34,93 +32,84 @@ if (!process.env.GITHUB_SECRET) {
   throw new Error('No GITHUB_SECRET has been provided.');
 }
 
-const useSecureCookies = Boolean(process.env.VERCEL_URL);
+const useSecureCookies = process.env.VERCEL_ENV === 'production';
+const cookiePrefix = useSecureCookies ? '__Secure-' : '';
+const cookieDomain = useSecureCookies ? 'typehero.dev' : undefined;
 
-export const authOptions: NextAuthOptions = {
+export const {
+  handlers: { GET, POST },
+  auth,
+} = NextAuth({
+  pages: {
+    signIn: '/login',
+  },
   cookies: {
     sessionToken: {
-      name: `${useSecureCookies ? '__Secure-' : ''}next-auth.session-token`,
+      name: `${cookiePrefix}next-auth.session-token`,
       options: {
         httpOnly: true,
         sameSite: 'lax',
         path: '/',
-        domain: useSecureCookies ? 'typehero.dev' : process.env.VERCEL_URL,
+        domain: cookieDomain,
         secure: useSecureCookies,
       },
     },
   },
-  callbacks: {
-    redirect: ({ url, baseUrl }) => {
-      if (url.startsWith('/')) return `${baseUrl}${url}`;
-      else if (new URL(url).origin === baseUrl) return url;
-      return baseUrl;
-    },
-    session: async ({ session, user }) => {
-      // 1. State
-      let userRoles: RoleTypes[] = [];
-
-      // 2. If user already has roles, reduce them to a RoleTypes array.
-      if (user.roles) {
-        userRoles = user.roles.reduce((acc: RoleTypes[], role) => {
-          acc.push(role.role);
-          return acc;
-        }, []);
-      }
-
-      // 3. If the current user doesn't have a USER role. Assign one.
-      if (!userRoles.includes('USER')) {
-        const updatedUser = await prisma.user.update({
-          where: {
-            id: user.id,
-          },
-          data: {
-            roles: {
-              connectOrCreate: {
-                where: {
-                  role: 'USER',
-                },
-                create: {
-                  role: 'USER',
-                },
-              },
+  adapter: {
+    ...PrismaAdapter(prisma),
+    // Override createUser method to add default USER role
+    createUser: async (data) => {
+      const user = await prisma.user.create({
+        data: {
+          ...data,
+          name: data.name ?? '',
+          roles: {
+            connectOrCreate: {
+              where: { role: 'USER' },
+              create: { role: 'USER' },
             },
           },
-          include: {
-            roles: true,
-          },
-        });
+        },
+        include: { roles: true },
+      });
+      return user;
+    },
+    // Override getSessionAndUser method to include roles. Avoids a second db query in session callback
+    getSessionAndUser: async (sessionToken) => {
+      const userAndSession = await prisma.session.findUnique({
+        where: { sessionToken },
+        include: { user: { include: { roles: true } } },
+      });
+      if (!userAndSession) return null;
+      const { user, ...session } = userAndSession;
+      return { user, session };
+    },
+  },
+  callbacks: {
+    session: async (opts) => {
+      if (!('user' in opts)) throw new Error("unreachable, we're not using JWT");
 
-        userRoles = updatedUser.roles.reduce((acc: RoleTypes[], role) => {
-          acc.push(role.role);
-          return acc;
-        }, []);
-      }
-
+      const { session, user } = opts;
       return {
         ...session,
         user: {
           ...session.user,
           id: user.id,
-          role: userRoles,
-          createAt: user.createdAt,
+          role: user.roles.map((r) => r.role),
         },
       };
     },
   },
-  adapter: PrismaAdapter(prisma),
   providers: [
     GitHubProvider({
       clientId: process.env.GITHUB_ID!,
       clientSecret: process.env.GITHUB_SECRET!,
+      profile: (p) => ({
+        id: p.id.toString(),
+        name: p.login,
+        email: p.email,
+        image: p.avatar_url,
+      }),
     }),
   ],
-};
-
-/**
- * Wrapper for `getServerSession` so that you don't need to import the `authOptions` in every file.
- *
- * @see https://next-auth.js.org/configuration/nextjs
- */
-export const getServerAuthSession = () => {
-  return getServerSession(authOptions);
-};
+});

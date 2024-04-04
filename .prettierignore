@@ -8,10 +8,10 @@
 .next
 node_modules
 *.log
-monaco-editor.d.ts
 
 pnpm-lock.yaml
 
+!challenges/**/tests.ts
 !apps/**
 !packages/**
 !tooling/**

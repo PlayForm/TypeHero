@@ -1,30 +1,32 @@
 'use client';
 
-import clsx from 'clsx';
-import { ChevronUp, Loader2, XCircle, CheckCircle2 } from '@repo/ui/icons';
-import type * as monaco from 'monaco-editor';
-import { useRouter, useSearchParams } from 'next/navigation';
-import React, { useState } from 'react';
-import lzstring from 'lz-string';
-import { useLocalStorage } from './useLocalStorage';
-import SplitEditor, { TESTS_PATH, USER_CODE_PATH } from './split-editor';
-import { createTwoslashInlayProvider } from './twoslash';
-import { PrettierFormatProvider } from './prettier';
-import { useResetEditor } from './editor-hooks';
-import { useToast } from '@repo/ui/components/use-toast';
-import { ToastAction } from '@repo/ui/components/toast';
 import { Button } from '@repo/ui/components/button';
-import { Tooltip, TooltipTrigger, TooltipContent } from '@repo/ui/components/tooltip';
+import { ToastAction } from '@repo/ui/components/toast';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@repo/ui/components/tooltip';
+import { useToast } from '@repo/ui/components/use-toast';
+import { CheckCircle2, ChevronUp, XCircle } from '@repo/ui/icons';
+import clsx from 'clsx';
+import lzstring from 'lz-string';
+import type * as monaco from 'monaco-editor';
+import { usePathname, useSearchParams } from 'next/navigation';
+import React, { useState } from 'react';
+import { useResetEditor } from './editor-hooks';
+import SplitEditor, { TESTS_PATH, USER_CODE_PATH } from './split-editor';
+import { useLocalStorage } from './useLocalStorage';
 
 export interface CodePanelProps {
   challenge: {
     id: number;
     code: string;
+    slug: string;
     tests: string;
+    tsconfig?: monaco.languages.typescript.CompilerOptions;
   };
   saveSubmission: (code: string, isSuccessful: boolean) => Promise<void>;
   submissionDisabled: boolean;
   settingsElement: React.ReactNode;
+  updatePlaygroundTestsLocalStorage?: (code: string) => void;
+  updatePlaygroundCodeLocalStorage?: (code: string) => void;
 }
 
 export type TsErrors = [
@@ -35,16 +37,17 @@ export type TsErrors = [
 
 export function CodePanel(props: CodePanelProps) {
   const params = useSearchParams();
-  const router = useRouter();
+  const pathname = usePathname();
+  const isPlayground = pathname.includes('playground');
   const { toast } = useToast();
   const [tsErrors, setTsErrors] = useState<TsErrors>();
-  const [isTestPanelExpanded, setIsTestPanelExpanded] = useState(false);
+  const [isTestPanelExpanded, setIsTestPanelExpanded] = useState(true);
   const [localStorageCode, setLocalStorageCode] = useLocalStorage(
-    `challenge-${props.challenge.id}`,
+    props.challenge.slug !== 'test-slug' ? `challenge-${props.challenge.slug}` : '',
     '',
   );
 
-  const showSubmitSpinner = props.submissionDisabled || tsErrors === undefined;
+  const disabled = props.submissionDisabled || tsErrors === undefined;
 
   const defaultCode =
     lzstring.decompressFromEncodedURIComponent(params.get('code') ?? '') ?? localStorageCode;
@@ -58,6 +61,7 @@ export function CodePanel(props: CodePanelProps) {
   };
 
   const [code, setCode] = useState(() => getDefaultCode());
+  const [tests, setTests] = useState(() => props.challenge.tests);
   useResetEditor().subscribe('resetCode', () => {
     setCode(props.challenge.code);
     setLocalStorageCode(props.challenge.code);
@@ -70,8 +74,15 @@ export function CodePanel(props: CodePanelProps) {
   const handleSubmit = async () => {
     const hasErrors = tsErrors?.some((e) => e.length) ?? false;
 
-    await props.saveSubmission(code ?? '', !hasErrors);
-    router.refresh();
+    try {
+      await props.saveSubmission(code ?? '', !hasErrors);
+    } catch {
+      return toast({
+        variant: 'destructive',
+        title: 'Something went wrong while submitting your code.',
+        action: <ToastAction altText="Try again">Try again</ToastAction>,
+      });
+    }
 
     if (hasErrors) {
       toast({
@@ -92,78 +103,111 @@ export function CodePanel(props: CodePanelProps) {
 
   return (
     <>
-      <div className="sticky top-0 flex h-[40px] shrink-0 items-center justify-end gap-4 border-b border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-[#1e1e1e]">
+      <div className="sticky top-0 flex h-[40px] shrink-0 items-center justify-end gap-4 border-b border-zinc-300 bg-white px-3 py-2 dark:border-zinc-700 dark:bg-[#1e1e1e]">
         {props.settingsElement}
       </div>
       <SplitEditor
+        isTestsReadonly={!isPlayground}
         userEditorState={userEditorState}
         monaco={monacoInstance}
         expandTestPanel={isTestPanelExpanded}
-        tests={props.challenge.tests}
+        setIsTestPanelExpanded={setIsTestPanelExpanded}
+        tests={tests}
         userCode={code}
+        tsconfig={props.challenge.tsconfig}
         onMount={{
           tests: async (editor, monaco) => {
             const getTsWorker = await monaco.languages.typescript.getTypeScriptWorker();
 
-            const mm = monaco.editor.getModel(monaco.Uri.parse(TESTS_PATH));
-            if (!mm) return null;
+            const model = monaco.editor.getModel(monaco.Uri.parse(TESTS_PATH));
+            if (!model) return null;
 
-            const tsWorker = await getTsWorker(mm.uri);
-            const errors = await Promise.all([
+            const tsWorker = await getTsWorker(model.uri);
+            const testErrors = await Promise.all([
               tsWorker.getSemanticDiagnostics(TESTS_PATH),
               tsWorker.getSyntacticDiagnostics(TESTS_PATH),
               tsWorker.getCompilerOptionsDiagnostics(TESTS_PATH),
             ] as const);
 
-            console.log({ errors });
+            const userErrors = await Promise.all([
+              tsWorker.getSemanticDiagnostics(USER_CODE_PATH),
+              tsWorker.getSyntacticDiagnostics(USER_CODE_PATH),
+              tsWorker.getCompilerOptionsDiagnostics(USER_CODE_PATH),
+            ] as const);
 
-            setTsErrors(errors);
+            setTsErrors(
+              testErrors.map((err, i) => {
+                return [...err, ...(userErrors[i] || [])];
+              }) as TsErrors,
+            );
+
             setTestEditorState(editor);
           },
           user: async (editor, monaco) => {
             setMonacoInstance(monaco);
-
-            monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
-              ...monaco.languages.typescript.typescriptDefaults.getCompilerOptions(),
-              strict: true,
-              target: monaco.languages.typescript.ScriptTarget.ESNext,
-              strictNullChecks: true,
-            });
-
-            monaco.languages.registerDocumentFormattingEditProvider(
-              'typescript',
-              PrettierFormatProvider,
-            );
-
             setUserEditorState(editor);
 
-            const model = editor.getModel();
+            const getTsWorker = await monaco.languages.typescript.getTypeScriptWorker();
+            const model = monaco.editor.getModel(monaco.Uri.parse(USER_CODE_PATH));
 
             if (!model) {
               throw new Error();
             }
 
-            const ts = await (await monaco.languages.typescript.getTypeScriptWorker())(model.uri);
+            const tsWorker = await getTsWorker(model.uri);
 
-            const errors = await Promise.all([
-              ts.getSemanticDiagnostics(USER_CODE_PATH),
-              ts.getSyntacticDiagnostics(USER_CODE_PATH),
-              ts.getCompilerOptionsDiagnostics(USER_CODE_PATH),
+            const testErrors = await Promise.all([
+              tsWorker.getSemanticDiagnostics(USER_CODE_PATH),
+              tsWorker.getSyntacticDiagnostics(USER_CODE_PATH),
+              tsWorker.getCompilerOptionsDiagnostics(USER_CODE_PATH),
             ] as const);
 
-            setTsErrors(errors);
+            const userErrors = await Promise.all([
+              tsWorker.getSemanticDiagnostics(USER_CODE_PATH),
+              tsWorker.getSyntacticDiagnostics(USER_CODE_PATH),
+              tsWorker.getCompilerOptionsDiagnostics(USER_CODE_PATH),
+            ] as const);
 
-            monaco.languages.registerInlayHintsProvider(
-              'typescript',
-              createTwoslashInlayProvider(monaco, ts),
+            setTsErrors(
+              testErrors.map((err, i) => {
+                return [...err, ...(userErrors[i] || [])];
+              }) as TsErrors,
             );
           },
         }}
         onChange={{
-          user: async (code) => {
+          tests: async (code = '') => {
+            if (isPlayground) {
+              props.updatePlaygroundTestsLocalStorage?.(code ?? '');
+
+              if (!monacoInstance) return null;
+              setTests(code);
+              setLocalStorageCode(code);
+
+              const getTsWorker = await monacoInstance.languages.typescript.getTypeScriptWorker();
+
+              const mm = monacoInstance.editor.getModel(monacoInstance.Uri.parse(TESTS_PATH));
+              if (!mm) return null;
+
+              const tsWorker = await getTsWorker(mm.uri);
+
+              const testErrors = await Promise.all([
+                tsWorker.getSemanticDiagnostics(TESTS_PATH),
+                tsWorker.getSyntacticDiagnostics(TESTS_PATH),
+                tsWorker.getCompilerOptionsDiagnostics(TESTS_PATH),
+              ] as const);
+
+              setTsErrors(testErrors);
+            }
+          },
+          user: async (code = '') => {
             if (!monacoInstance) return null;
-            setCode(code ?? '');
-            setLocalStorageCode(code ?? '');
+            if (isPlayground) {
+              props.updatePlaygroundCodeLocalStorage?.(code ?? '');
+            }
+            setCode(code);
+            setLocalStorageCode(code);
+
             const getTsWorker = await monacoInstance.languages.typescript.getTypeScriptWorker();
 
             const mm = monacoInstance.editor.getModel(monacoInstance.Uri.parse(TESTS_PATH));
@@ -171,13 +215,23 @@ export function CodePanel(props: CodePanelProps) {
 
             const tsWorker = await getTsWorker(mm.uri);
 
-            const errors = await Promise.all([
+            const testErrors = await Promise.all([
               tsWorker.getSemanticDiagnostics(TESTS_PATH),
               tsWorker.getSyntacticDiagnostics(TESTS_PATH),
               tsWorker.getCompilerOptionsDiagnostics(TESTS_PATH),
             ] as const);
 
-            setTsErrors(errors);
+            const userErrors = await Promise.all([
+              tsWorker.getSemanticDiagnostics(USER_CODE_PATH),
+              tsWorker.getSyntacticDiagnostics(USER_CODE_PATH),
+              tsWorker.getCompilerOptionsDiagnostics(USER_CODE_PATH),
+            ] as const);
+
+            setTsErrors(
+              testErrors.map((err, i) => {
+                return [...err, ...(userErrors[i] || [])];
+              }) as TsErrors,
+            );
           },
         }}
       />
@@ -186,47 +240,60 @@ export function CodePanel(props: CodePanelProps) {
           {
             'justify-between': testEditorState,
           },
-          'sticky bottom-0 flex items-center justify-between p-2 dark:bg-[#1e1e1e]',
+          'sticky bottom-0 flex items-center justify-between border-t border-zinc-300 bg-white p-2 dark:border-zinc-700 dark:bg-[#1e1e1e]',
         )}
       >
         <div className="flex items-center gap-4">
-          <Button
-            className="flex items-center gap-1"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setIsTestPanelExpanded((tp) => !tp);
-            }}
-          >
-            Tests
-            {isTestPanelExpanded ? (
-              <ChevronUp className="rotate-180 transform transition" size={16} />
-            ) : (
-              <ChevronUp className="transform transition" size={16} />
-            )}
-          </Button>
-          {hasFailingTest ? (
-            <XCircle className="stroke-red-600 dark:stroke-red-300" />
-          ) : (
-            <CheckCircle2 className="stroke-green-600 dark:stroke-green-300" />
-          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                className="flex items-center gap-1"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setIsTestPanelExpanded((tp) => !tp);
+                }}
+              >
+                Tests
+                {isTestPanelExpanded ? (
+                  <ChevronUp className="rotate-180 transform transition" size={16} />
+                ) : (
+                  <ChevronUp className="transform transition" size={16} />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{isTestPanelExpanded ? 'Hide tests' : 'Show tests'}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              {hasFailingTest ? (
+                <XCircle className="stroke-red-600 dark:stroke-red-300" />
+              ) : (
+                <CheckCircle2 className="stroke-green-600 dark:stroke-green-300" />
+              )}
+            </TooltipTrigger>
+            <TooltipContent>
+              {hasFailingTest ? 'Tests are failing' : 'All tests have passed 🎉'}
+            </TooltipContent>
+          </Tooltip>
         </div>
         <div className="flex items-center justify-between gap-4">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
-                disabled={showSubmitSpinner}
+                disabled={disabled}
                 size="sm"
-                className="cursor-pointer rounded-lg bg-emerald-600 duration-300 hover:bg-emerald-500 dark:bg-emerald-400 dark:hover:bg-emerald-300"
+                className="cursor-pointer rounded-lg duration-300"
                 onClick={handleSubmit}
               >
-                {showSubmitSpinner && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Submit{tsErrors === undefined && ' (open test cases)'}
+                {disabled && 'Login to '}Submit{tsErrors === undefined && ' (open test cases)'}
               </Button>
             </TooltipTrigger>
-            <TooltipContent>
-              <p>Login to Submit</p>
-            </TooltipContent>
+            {disabled && (
+              <TooltipContent>
+                <p>Login to Submit</p>
+              </TooltipContent>
+            )}
           </Tooltip>
         </div>
       </div>

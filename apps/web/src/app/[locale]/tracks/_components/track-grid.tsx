@@ -1,12 +1,23 @@
+import { auth, type Session } from '@repo/auth/server';
 import { prisma } from '@repo/db';
 import { TrackCard } from './track-card';
+import { TrackCardSoon } from './track-card-soon';
 
 export async function TrackGrid() {
-  const tracks = await getTracks();
+  const session = await auth();
+
+  const tracks = await getTracks(session);
+
   return (
-    <div className="container flex items-center justify-between gap-3">
-      <section className="grid w-full grid-flow-row grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-3">
-        {tracks?.map((t) => <TrackCard key={`track-${t.id}`} track={t} />)}
+    <div className="container">
+      <section className="w-[calc(100% + 8rem)] grid grid-cols-1 gap-4 sm:px-8 md:-mx-16 md:grid-cols-2 md:px-0 lg:mx-0 lg:w-full xl:grid-cols-3 2xl:gap-8">
+        {tracks?.map((track) => {
+          if (track.isComingSoon) {
+            return <TrackCardSoon key={`track-${track.id}`} track={track} />;
+          }
+
+          return <TrackCard key={`track-${track.id}`} track={track} />;
+        })}
       </section>
     </div>
   );
@@ -14,27 +25,38 @@ export async function TrackGrid() {
 
 export type Tracks = Awaited<ReturnType<typeof getTracks>>;
 
-/**
- * Fetches all tracks.
- */
-function getTracks() {
+async function getTracks(session: Session | null) {
   return prisma.track.findMany({
     include: {
+      _count: {
+        select: {
+          trackChallenges: true,
+        },
+      },
+      enrolledUsers: {
+        where: {
+          id: session?.user?.id ?? '',
+        },
+      },
       trackChallenges: {
         include: {
-          challenge: true,
+          challenge: {
+            include: {
+              submission: {
+                where: {
+                  userId: session?.user?.id,
+                },
+              },
+            },
+          },
         },
-        orderBy: {
-          orderId: 'asc',
-        },
-        take: 3,
       },
     },
     where: {
       visible: true,
     },
     orderBy: {
-      title: 'asc',
+      isComingSoon: 'asc',
     },
   });
 }

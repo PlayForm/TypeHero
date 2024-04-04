@@ -2,64 +2,90 @@ import { Loader2 } from '@repo/ui/icons';
 import { useSession } from '@repo/auth/react';
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Button } from '@repo/ui/components/button';
-import { useToast } from '@repo/ui/components/use-toast';
-import { ToastAction } from '@repo/ui/components/toast';
 import { Textarea } from '@repo/ui/components/textarea';
 import { Markdown } from '@repo/ui/components/markdown';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { Form, FormField, FormItem, FormMessage } from '@repo/ui/components/form';
+import { singleFieldSchema, type SingleFieldSchema } from '~/utils/zodSingleStringField';
 
 interface Props {
   mode: 'create' | 'edit' | 'reply';
   onCancel?: () => void;
-  onChange: (text: string) => void;
-  value: string;
   placeholder?: string;
-  onSubmit: () => Promise<void>;
+  onSubmit: (text: string) => Promise<void>;
+  defaultValue?: string;
 }
 
-export function CommentInput({ mode, onCancel, onChange, value, placeholder, onSubmit }: Props) {
+export function CommentInput({ mode, onCancel, placeholder, onSubmit, defaultValue }: Props) {
   const { data: session } = useSession();
-  const { toast } = useToast();
   const [commentMode, setCommentMode] = useState<'editor' | 'preview'>('editor');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const textAreaRef = useRef<HTMLTextAreaElement>(null);
 
+  const form = useForm<SingleFieldSchema>({
+    resolver: zodResolver(singleFieldSchema),
+    defaultValues: { text: defaultValue ?? '' },
+  });
+  const formValid = form.formState.isValid;
+  const value = form.watch('text');
   useAutosizeTextArea(textAreaRef, value, commentMode);
 
-  const handleEnterKey = async (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (isSubmitting) {
-      e.preventDefault();
-      return;
-    }
-
-    if (e.shiftKey && e.key === 'Enter') {
-      e.preventDefault();
-      if (!session?.user) {
-        toast({
-          variant: 'destructive',
-          title: 'You need to be logged in to comment.',
-          action: <ToastAction altText="Dismiss">Dismiss</ToastAction>,
-        });
-
-        return;
-      }
-      setIsSubmitting(true);
-      await onSubmit();
-      setIsSubmitting(false);
+  const submitComment = async ({ text }: { text: string }) => {
+    try {
+      await onSubmit(text);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      form.reset();
+      setCommentMode('editor');
     }
   };
 
+  const isSubmitting = form.formState.isSubmitting;
+
   return (
-    <div className="flex flex-col rounded-xl rounded-br-lg bg-neutral-100 backdrop-blur-sm dark:border-zinc-700 dark:bg-zinc-700/90">
+    <div className="relative flex flex-col">
       {commentMode === 'editor' && (
-        <Textarea
-          autoFocus
-          className="resize-none border-0 px-3 py-2 focus-visible:ring-0 md:max-h-[calc(100vh_-_232px)]"
-          onChange={(e) => onChange(e.target.value)}
-          onKeyDown={handleEnterKey}
-          placeholder={placeholder ?? 'Enter your comment here.'}
-          ref={textAreaRef}
-          value={value}
-        />
+        <div className="rounded-xl rounded-br-lg bg-neutral-100 backdrop-blur-sm dark:border-zinc-700 dark:bg-zinc-700/90">
+          <Form {...form}>
+            <FormField
+              control={form.control}
+              name="text"
+              render={({ field }) => (
+                <FormItem>
+                  <Textarea
+                    disabled={!session?.user}
+                    autoFocus
+                    className="resize-none border-0 px-3 py-2 focus-visible:ring-0 md:max-h-[calc(100vh_-_232px)]"
+                    onChange={(e) => {
+                      field.onChange(e);
+                      form.trigger();
+                    }}
+                    onKeyDown={(e) => {
+                      if (isSubmitting) {
+                        e.preventDefault();
+                        return;
+                      }
+                      if (e.key === 'Enter' && e.shiftKey) {
+                        form.handleSubmit(submitComment);
+                        e.preventDefault();
+                      }
+                    }}
+                    placeholder={
+                      placeholder ?? !session?.user
+                        ? 'You need to be logged in to comment.'
+                        : 'Enter your comment here.'
+                    }
+                    ref={textAreaRef}
+                    value={value}
+                  />
+                  <FormMessage className="absolute h-8 pl-3 leading-8" />
+                </FormItem>
+              )}
+            />
+          </Form>
+        </div>
       )}
       {commentMode === 'preview' && (
         <div className="min-h-[5rem] overflow-y-auto break-words px-3 pt-2 text-sm md:max-h-[calc(100vh_-_232px)]">
@@ -67,9 +93,10 @@ export function CommentInput({ mode, onCancel, onChange, value, placeholder, onS
         </div>
       )}
       <div className="flex justify-end">
-        <div className="flex gap-2 p-2">
+        <div className="flex gap-2 p-2 pl-0">
           <Button
             className="h-8"
+            disabled={isSubmitting || value.length === 0}
             onClick={() => setCommentMode(commentMode === 'editor' ? 'preview' : 'editor')}
             variant={mode === 'create' ? 'secondary' : 'ghost'}
           >
@@ -81,30 +108,9 @@ export function CommentInput({ mode, onCancel, onChange, value, placeholder, onS
             </Button>
           )}
           <Button
-            className="h-8 w-[5.5rem] rounded-lg rounded-br-sm bg-emerald-600 hover:bg-emerald-500 dark:bg-emerald-400 dark:hover:bg-emerald-300"
-            disabled={value.length === 0 || isSubmitting}
-            onClick={async () => {
-              try {
-                if (!session?.user) {
-                  toast({
-                    variant: 'destructive',
-                    title: 'You need to be logged in to comment.',
-                    action: <ToastAction altText="Dismiss">Dismiss</ToastAction>,
-                  });
-
-                  return;
-                }
-
-                setIsSubmitting(true);
-
-                await onSubmit();
-              } catch (e) {
-                console.error(e);
-              } finally {
-                setIsSubmitting(false);
-                setCommentMode('editor');
-              }
-            }}
+            className="h-8 w-[5.5rem] rounded-lg rounded-br-sm"
+            disabled={value.length === 0 || isSubmitting || !formValid}
+            onClick={form.handleSubmit(submitComment)}
           >
             {isSubmitting ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Comment'}
           </Button>

@@ -2,23 +2,37 @@
 
 import { useSession } from '@repo/auth/react';
 import { type CommentRoot } from '@repo/db/types';
-import { ChevronDown, ChevronUp, Pencil, Reply, Share, Trash2 } from '@repo/ui/icons';
-import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
+import { Markdown } from '@repo/ui/components/markdown';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@repo/ui/components/tooltip';
+import { toast } from '@repo/ui/components/use-toast';
+import { UserBadge } from '@repo/ui/components/user-badge';
+import {
+  ChevronDown,
+  ChevronUp,
+  Calendar,
+  Flag,
+  Pencil,
+  Reply,
+  Share,
+  Trash2,
+  MoreHorizontal,
+} from '@repo/ui/icons';
 import clsx from 'clsx';
 import Link from 'next/link';
+import { useParams, useSearchParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 import { ReportDialog } from '~/components/ReportDialog';
 import { getRelativeTime } from '~/utils/relativeTime';
 import { Vote } from '../vote';
 import { CommentInput } from './comment-input';
-import { replyComment, updateComment } from './comment.action';
 import { CommentDeleteDialog } from './delete';
-import { getPaginatedComments, type PaginatedComments } from './getCommentRouteData';
-import { toast } from '@repo/ui/components/use-toast';
-import { UserBadge } from '@repo/ui/components/user-badge';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@repo/ui/components/tooltip';
-import { Markdown } from '@repo/ui/components/markdown';
+import { type PaginatedComments, type PreselectedCommentMetadata } from './getCommentRouteData';
+import { Avatar, AvatarFallback, AvatarImage } from '@repo/ui/components/avatar';
+import { Button } from '@repo/ui/components/button';
+import { CommentSkeleton } from './comment-skeleton';
+import { isAdminOrModerator } from '~/utils/auth-guards';
+import { useCommentsReplies } from './comments.hooks';
 
 interface SingleCommentProps {
   comment: PaginatedComments['comments'][number];
@@ -27,13 +41,17 @@ interface SingleCommentProps {
   isToggleReply?: boolean;
   onClickReply?: () => void;
   onClickToggleReply?: () => void;
-  queryKey?: (number | string)[];
-  replyQueryKey?: (number | string)[];
+  preselectedCommentMetadata?: PreselectedCommentMetadata;
+  deleteComment: (commentId: number) => Promise<void>;
+  updateComment: (text: string, commentId: number) => Promise<void>;
 }
 
 type CommentProps = SingleCommentProps & {
+  preselectedCommentMetadata?: PreselectedCommentMetadata;
   rootId: number;
   type: CommentRoot;
+  deleteComment: (commentId: number) => Promise<void>;
+  updateComment: (text: string, commentId: number) => Promise<void>;
 };
 
 const commentReportSchema = z
@@ -58,60 +76,39 @@ const commentReportSchema = z
 export type CommentReportSchemaType = z.infer<typeof commentReportSchema>;
 
 // million-ignore
-export function Comment({ comment, readonly = false, rootId, type, queryKey }: CommentProps) {
-  const [showReplies, setShowReplies] = useState(false);
+export function Comment({
+  comment,
+  preselectedCommentMetadata,
+  readonly = false,
+  rootId,
+  type,
+  deleteComment,
+  updateComment,
+}: CommentProps) {
+  const params = useSearchParams();
+  const replyId = params.get('replyId');
 
+  const hasPreselectedReply =
+    preselectedCommentMetadata?.selectedComment?.id === comment.id && Boolean(replyId);
+
+  const [showReplies, setShowReplies] = useState(hasPreselectedReply);
   const [isReplying, setIsReplying] = useState(false);
-  const [replyText, setReplyText] = useState('');
-  const queryClient = useQueryClient();
 
-  const replyQueryKey = [`${comment.id}-comment-replies`];
-  const { data, fetchNextPage, isFetching } = useInfiniteQuery({
-    queryKey: replyQueryKey,
-    queryFn: ({ pageParam = 1 }) =>
-      getPaginatedComments({
-        rootId,
-        rootType: type,
-        page: pageParam,
-        parentId: comment.id,
-      }),
-    getNextPageParam: (_, pages) => pages.length + 1,
-    staleTime: 5000,
+  const {
+    status,
+    data,
+    fetchNextPage,
+    addReplyComment,
+    updateReplyComment,
+    deleteReplyComment,
+    showLoadMoreRepliesBtn,
+  } = useCommentsReplies({
+    enabled: showReplies,
+    rootId,
+    type,
+    parentCommentId: comment.id,
+    preselectedReplyId: hasPreselectedReply ? Number(replyId) : undefined,
   });
-
-  async function createChallengeCommentReply() {
-    try {
-      const res = await replyComment(
-        {
-          text: replyText,
-          rootId,
-          rootType: type,
-        },
-        comment.id,
-      );
-      if (res === 'text_is_empty') {
-        toast({
-          title: 'Empty Comment',
-          description: <p>You cannot post an empty comment.</p>,
-        });
-      } else if (res === 'unauthorized') {
-        toast({
-          title: 'Unauthorized',
-          description: <p>You need to be signed in to post a comment.</p>,
-        });
-      }
-      setReplyText('');
-      queryClient.invalidateQueries(replyQueryKey);
-      queryClient.invalidateQueries(queryKey);
-      setShowReplies(true);
-    } catch (e) {
-      toast({
-        title: 'Unauthorized',
-        variant: 'destructive',
-        description: <p>You need to be signed in to post a comment.</p>,
-      });
-    }
-  }
 
   const toggleReplies = () => setShowReplies(!showReplies);
   const toggleIsReplying = () => setIsReplying(!isReplying);
@@ -119,11 +116,14 @@ export function Comment({ comment, readonly = false, rootId, type, queryKey }: C
   return (
     <div className="flex flex-col px-2 py-1">
       <SingleComment
+        preselectedCommentMetadata={preselectedCommentMetadata}
         comment={comment}
         isToggleReply={showReplies}
         onClickReply={toggleIsReplying}
         onClickToggleReply={toggleReplies}
         readonly={readonly}
+        deleteComment={deleteComment}
+        updateComment={updateComment}
       />
       {isReplying ? (
         <div className="relative mt-2 pb-2 pl-8">
@@ -133,83 +133,78 @@ export function Comment({ comment, readonly = false, rootId, type, queryKey }: C
             onCancel={() => {
               setIsReplying(false);
             }}
-            onChange={setReplyText}
-            onSubmit={async () => {
-              await createChallengeCommentReply();
+            onSubmit={async (text) => {
+              await addReplyComment(text);
+              setShowReplies(true);
               setIsReplying(false);
             }}
-            value={replyText}
           />
         </div>
       ) : null}
 
+      {showReplies && status === 'pending' ? <CommentSkeleton /> : null}
       {showReplies ? (
-        <div className="flex flex-col gap-1 pl-6 pt-1">
-          {data?.pages.flatMap((page) =>
-            page.comments.map((reply) => (
-              // this is a reply
-              <SingleComment comment={reply} isReply key={reply.id} replyQueryKey={replyQueryKey} />
-            )),
-          )}
-        </div>
-      ) : null}
-
-      {!isFetching && showReplies && data?.pages.at(-1)?.hasMore ? (
-        <button
-          className="flex cursor-pointer items-center gap-1 pl-6 text-xs text-neutral-500 duration-200 hover:text-neutral-400 dark:text-neutral-400 dark:hover:text-neutral-300"
-          onClick={() => fetchNextPage()}
-        >
-          Load more
-        </button>
+        <>
+          <div className="flex flex-col gap-1 pl-6 pt-1">
+            {data?.pages.flatMap((page) =>
+              page.replies.map((reply) => (
+                // this is a reply
+                <SingleComment
+                  comment={reply}
+                  isReply
+                  key={reply.id}
+                  preselectedCommentMetadata={preselectedCommentMetadata}
+                  deleteComment={deleteReplyComment}
+                  updateComment={updateReplyComment}
+                />
+              )),
+            )}
+          </div>
+          {showLoadMoreRepliesBtn ? (
+            <Button
+              variant="ghost"
+              className="gap-1 text-xs text-neutral-500 duration-200 hover:text-neutral-400 dark:text-neutral-400 dark:hover:text-neutral-300"
+              onClick={() => fetchNextPage()}
+            >
+              <MoreHorizontal size={24} />
+              Load More
+              <span className="sr-only">Load More</span>
+            </Button>
+          ) : null}
+        </>
       ) : null}
     </div>
   );
 }
 
+const SELECTED_CLASSES = 'rounded-md bg-sky-300/20';
+
+// million-ignore
 function SingleComment({
   comment,
-  readonly = false,
-  onClickReply,
-  onClickToggleReply,
   isReply,
   isToggleReply,
-  queryKey,
-  replyQueryKey,
+  onClickReply,
+  onClickToggleReply,
+  readonly = false,
+  preselectedCommentMetadata,
+  deleteComment,
+  updateComment,
 }: SingleCommentProps) {
-  const queryClient = useQueryClient();
-  const [text, setText] = useState(comment.text);
+  const { slug } = useParams();
+  const searchParams = useSearchParams();
+  const replyId = searchParams.get('replyId');
   const [isEditing, setIsEditing] = useState(false);
-
+  const elRef = useRef<HTMLDivElement | null>(null);
   const session = useSession();
 
-  async function updateChallengeComment() {
-    try {
-      const res = await updateComment(text, comment.id);
-      if (res === 'text_is_empty') {
-        toast({
-          title: 'Empty Comment',
-          description: <p>You cannot post an empty comment.</p>,
-        });
-      } else if (res === 'unauthorized') {
-        toast({
-          title: 'Unauthorized',
-          description: <p>You need to be signed in to post a comment.</p>,
-        });
-      }
-      queryClient.invalidateQueries(queryKey);
-      queryClient.invalidateQueries(replyQueryKey);
-    } catch (e) {
-      toast({
-        title: 'Unauthorized',
-        variant: 'destructive',
-        description: <p>You need to be signed in to post a comment.</p>,
-      });
-    }
-  }
+  const isHighlighted = replyId
+    ? Number(replyId) === comment.id
+    : preselectedCommentMetadata?.selectedComment?.id === comment.id;
 
-  async function copyPathNotifyUser() {
+  async function copyPathNotifyUser(isReply: boolean, slug: string) {
     try {
-      await copyCommentUrlToClipboard();
+      await copyCommentUrlToClipboard(isReply, slug);
       toast({
         title: 'Success!',
         variant: 'success',
@@ -225,27 +220,73 @@ function SingleComment({
     }
   }
 
-  async function copyCommentUrlToClipboard() {
-    await navigator.clipboard.writeText(`${window.location.href}/comment/${comment.id}`);
+  async function copyCommentUrlToClipboard(isReply: boolean, slug: string) {
+    const commentId = isReply ? comment.parentId : comment.id;
+    const paramsObj = { replyId: String(comment.id) };
+    const searchParams = new URLSearchParams(paramsObj);
+
+    const { rootType, rootSolutionId } = comment;
+    const baseURL = `${window.location.origin}/challenge/${slug}`;
+    const hasGetParams = isReply ? `?${searchParams.toString()}` : '';
+
+    const shareUrl =
+      rootType === 'CHALLENGE'
+        ? `${baseURL}/comments/${commentId}${hasGetParams}`
+        : `${baseURL}/solutions/${rootSolutionId}/comments/${commentId}${hasGetParams}`;
+
+    await navigator.clipboard.writeText(shareUrl);
   }
 
   const loggedinUser = useSession();
 
-  const isAuthor = loggedinUser.data?.user.id === comment.user.id;
+  const isAuthor = loggedinUser.data?.user?.id === comment.user.id;
+  const isAdminAndModerator = isAdminOrModerator(loggedinUser.data);
+
+  const hasBeenEdited = comment.updatedAt.getTime() > comment.createdAt.getTime();
+
+  useEffect(() => {
+    if (!isHighlighted) return;
+    const timeout = setTimeout(() => {
+      elRef.current?.classList.remove(...SELECTED_CLASSES.split(' '));
+    }, 5000);
+    window.requestAnimationFrame(() => elRef.current?.scrollIntoView({ block: 'nearest' }));
+    return () => {
+      clearTimeout(timeout);
+    };
+  }, [isHighlighted]);
 
   return (
-    <div className="relative p-2 pl-3">
+    <div
+      id={`comment-${comment.id}`}
+      className={clsx(
+        'relative p-2 pl-3',
+        isHighlighted && SELECTED_CLASSES,
+        'transition-colors',
+        'duration-150',
+      )}
+      ref={elRef}
+    >
       <div className="flex items-start justify-between gap-4 pr-[0.4rem]">
-        <div className="flex w-full items-center justify-between gap-1">
-          <UserBadge username={comment.user.name ?? ''} linkComponent={Link} />
+        <div className="mb-2 flex w-full items-center justify-between gap-1">
+          <div className="flex items-center gap-2">
+            <Avatar className="h-7 w-7">
+              <AvatarImage alt="github profile picture" src={comment.user?.image ?? ''} />
+              <AvatarFallback className="border border-zinc-300 dark:border-zinc-600">
+                {comment.user?.name.substring(0, 1)}
+              </AvatarFallback>
+            </Avatar>
+            <UserBadge username={comment.user.name ?? ''} linkComponent={Link} />
+          </div>
+
           <Tooltip delayDuration={0.05}>
             <TooltipTrigger asChild>
-              <span className="whitespace-nowrap text-[0.8rem] text-neutral-500 dark:text-neutral-400">
-                {getRelativeTime(comment.createdAt)}
-              </span>
+              <div className="text-muted-foreground flex items-center gap-2 whitespace-nowrap text-xs">
+                <Calendar className="h-4 w-4" />
+                <span>{getRelativeTime(comment.createdAt)}</span>
+              </div>
             </TooltipTrigger>
             <TooltipContent align="start" alignOffset={-55} className="rounded-xl">
-              <span className="text-xs text-white">{comment.createdAt.toLocaleString()}</span>
+              <span className="text-foreground text-xs">{comment.createdAt.toLocaleString()}</span>
             </TooltipContent>
           </Tooltip>
         </div>
@@ -253,25 +294,33 @@ function SingleComment({
       {!isEditing && (
         <div className="-mb-1">
           <ExpandableContent content={comment.text} />
+          {hasBeenEdited ? (
+            <div className="text-muted-foreground flex items-center gap-2 whitespace-nowrap text-xs">
+              Last edited at{' '}
+              {new Intl.DateTimeFormat(undefined, {
+                timeStyle: 'short',
+                dateStyle: 'short',
+              }).format(comment.updatedAt)}
+            </div>
+          ) : null}
         </div>
       )}
       {isEditing ? (
-        <div className=" mb-2">
+        <div className="mb-2">
           <CommentInput
             mode="edit"
+            defaultValue={comment.text}
             onCancel={() => {
               setIsEditing(false);
             }}
-            onChange={setText}
-            onSubmit={async () => {
-              await updateChallengeComment();
+            onSubmit={async (text) => {
+              await updateComment(text, comment.id);
               setIsEditing(false);
             }}
-            value={text}
           />
         </div>
       ) : null}
-      <div className="my-auto flex items-center gap-4">
+      <div className="my-auto mt-3 flex items-center gap-2">
         {!readonly && (
           <>
             <Vote
@@ -291,50 +340,84 @@ function SingleComment({
                 comment._count.vote += didUpvote ? 1 : -1;
               }}
             />
-            <div
-              className="flex cursor-pointer items-center gap-1 text-neutral-500 duration-200 hover:text-neutral-400 dark:text-neutral-400 dark:hover:text-neutral-300"
-              onClick={() => {
-                copyPathNotifyUser();
-              }}
-            >
-              <Share className="h-3 w-3" />
-              <div className="hidden text-[0.8rem] sm:block">Share</div>
-            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="secondary"
+                  size="xs"
+                  className="gap-2"
+                  onClick={() => {
+                    copyPathNotifyUser(Boolean(isReply), slug as string);
+                  }}
+                >
+                  <Share className="h-3 w-3" />
+                  <span className="sr-only">Share this comment</span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Share</p>
+              </TooltipContent>
+            </Tooltip>
             {!isReply && (
-              <button
-                className="flex cursor-pointer items-center gap-1 text-neutral-500 duration-200 disabled:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-300"
-                onClick={onClickReply}
-              >
-                <Reply className="h-4 w-4" />
-                <div className="hidden text-[0.8rem] sm:block">Reply</div>
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="secondary" size="xs" onClick={onClickReply}>
+                    <Reply className="h-3 w-3" />
+                    <span className="sr-only">Create a reply</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Reply</p>
+                </TooltipContent>
+              </Tooltip>
             )}
             {isAuthor ? (
-              <button
-                className="flex cursor-pointer items-center gap-1 text-neutral-500 duration-200 hover:text-neutral-400 dark:text-neutral-400 dark:hover:text-neutral-300"
-                onClick={() => setIsEditing(!isEditing)}
-              >
-                <Pencil className="h-3 w-3" />
-                <div className="hidden text-[0.8rem] sm:block">Edit</div>
-              </button>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="secondary" size="xs" onClick={() => setIsEditing(!isEditing)}>
+                    <Pencil className="h-3 w-3" />
+                    <span className="sr-only">Edit this comment</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Edit</p>
+                </TooltipContent>
+              </Tooltip>
             ) : null}
-            {isAuthor ? (
-              <CommentDeleteDialog asChild comment={comment}>
-                <button className="flex cursor-pointer items-center gap-1 text-neutral-500 duration-200 hover:text-neutral-400 dark:text-neutral-400 dark:hover:text-neutral-300">
-                  <Trash2 className="h-3 w-3" />
-                  <div className="hidden text-[0.8rem] sm:block">Delete</div>
-                </button>
-              </CommentDeleteDialog>
+            {isAuthor || isAdminAndModerator ? (
+              <Tooltip>
+                <CommentDeleteDialog asChild comment={comment} deleteComment={deleteComment}>
+                  <TooltipTrigger asChild>
+                    <Button variant="secondary" size="xs">
+                      <Trash2 className="h-3 w-3" />
+                      <span className="sr-only">Delete this comment</span>
+                    </Button>
+                  </TooltipTrigger>
+                </CommentDeleteDialog>
+                <TooltipContent>
+                  <p>Delete</p>
+                </TooltipContent>
+              </Tooltip>
             ) : (
-              <ReportDialog commentId={comment.id} reportType="COMMENT">
-                <div className="flex cursor-pointer items-center text-[0.8rem] text-neutral-500 duration-200 hover:text-neutral-400 dark:text-neutral-400 dark:hover:text-neutral-300">
-                  Report
-                </div>
-              </ReportDialog>
+              <Tooltip>
+                <ReportDialog triggerAsChild commentId={comment.id} reportType="COMMENT">
+                  <TooltipTrigger asChild>
+                    <Button variant="secondary" size="xs">
+                      <Flag className="h-3 w-3" />
+                      <span className="sr-only">Report this comment</span>
+                    </Button>
+                  </TooltipTrigger>
+                </ReportDialog>
+                <TooltipContent>
+                  <p>Report</p>
+                </TooltipContent>
+              </Tooltip>
             )}
             {comment._count.replies > 0 && (
-              <button
-                className="z-50 flex cursor-pointer items-center gap-1 text-neutral-500 duration-200 hover:text-neutral-400 dark:text-neutral-400 dark:hover:text-neutral-300"
+              <Button
+                variant="ghost"
+                size="xs"
+                className="z-50 ml-auto gap-1"
                 onClick={onClickToggleReply}
               >
                 {isToggleReply ? (
@@ -346,7 +429,8 @@ function SingleComment({
                 <div className="text-xs">
                   {comment._count.replies === 1 ? '1 reply' : `${comment._count.replies} replies`}
                 </div>
-              </button>
+                <span className="sr-only">Toggle replies view</span>
+              </Button>
             )}
           </>
         )}

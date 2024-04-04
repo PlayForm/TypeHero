@@ -1,22 +1,17 @@
-import { createClient, type EdgeConfigItems } from '@vercel/edge-config';
+import { createClient } from '@vercel/edge-config';
 
-const edgeConfig = createClient(process.env.EDGE_CONFIG);
-/**
- * This will try to eval a feature flag on the prod app
- *
- * @example
- * ```
- * const isFeatureEnabled = await evaluateFlag('my-feature-flag');
- * ```
- */
-export async function evaluateFlag(key: string): Promise<boolean> {
-  const featureFlag = await edgeConfig.get(key);
+export const mockFlags = {
+  enableLogin: true,
+  enableExplore: true,
+  enableTracks: true,
+  enableEarlyAccess: false,
+  enableInChallengeTrack: true,
+  enableHolidayEvent: true,
+};
 
-  const rawValue = featureFlag?.valueOf();
-  return rawValue == true;
-}
-
-export async function getAllFlags(): Promise<EdgeConfigItems> {
-  const allFeatureFlag = await edgeConfig.getAll();
+export async function getAllFlags() {
+  const allFeatureFlag = process.env.EDGE_CONFIG
+    ? await createClient(process.env.EDGE_CONFIG).getAll<typeof mockFlags>()
+    : mockFlags;
   return allFeatureFlag;
 }

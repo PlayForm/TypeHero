@@ -80,7 +80,16 @@ NEXTAUTH_SECRET="for local use you can just use a garble of letters"
 NEXTAUTH_URL="http://localhost:3000"
 ```
 
-### 5. Install dependencies
+### 5. Setup algolia for search
+
+Go to [algolia.com](https://www.algolia.com/apps/) and create a project, then copy in the secrets into your `.env`.
+
+```
+NEXT_PUBLIC_ALGOLIA_APP_ID=APP_ID
+NEXT_PUBLIC_ALGOLIA_API_KEY=API_KEY
+```
+
+### 6. Install dependencies
 
 Use `pnpm` to install dependencies.
 
@@ -88,14 +97,14 @@ Use `pnpm` to install dependencies.
 pnpm install
 ```
 
-### 6. Push Database Schema and Seed
+### 7. Push Database Schema and Seed
 
 ```
 pnpm db:push
 pnpm db:seed
 ```
 
-### 7. Running the dev server
+### 8. Running the dev server
 
 Finally, you can run the dev server:
 
@@ -114,9 +123,72 @@ Once the server is running you can seed and sync data
 [planetscale-quick-start]: https://planetscale.com/docs/tutorials/planetscale-quick-start-guide
 [new-oauth]: https://github.com/settings/applications/new
 
+### Make Yourself an Admin
+
+1. Ensure you have logged into your local instance atleast once
+2. Run `pnpm db:studio` - to open [Prisma Studio](https://www.prisma.io/docs/concepts/components/prisma-studio)
+
+   ![prisma studio](./media/prisma-studio-models.png)
+
+3. Click on the `User` table from the list of models
+4. Locate your username and open record in new tab to modify Role
+
+   ![modify role](./media/change-role-to-admin.png)
+
 #### Dependencies
 
 UI Library: [shadcn](https://ui.shadcn.com/)
+
+# Testing
+
+### 1. Install Playwright Dependencies
+
+```
+pnpm test:e2e:install
+```
+
+### 2. Run E2E Tests
+
+You can use the production server or the dev server to run the e2e tests.
+
+> [!WARNING]
+> The dev server may cause tests to timeout.
+
+### 2.a Production server
+
+Playwright will automatically start the production server
+
+```
+pnpm build && pnpm test:e2e
+```
+
+### 2.b Dev server
+
+Open two separate terminals and run the following commands in each one:
+
+Terminal 1:
+
+```
+pnpm dev
+```
+
+Terminal 2:
+
+```
+pnpm test:e2e
+```
+
+### Running Tests in UI Mode
+
+In the event you need to troubleshoot the end-to-end tests, you can run Playwright in [UI mode](https://playwright.dev/docs/test-ui-mode). You can do this by running `pnpm test:e2e:ui`. This will spin up a playwright server on localhost:8080, which will provide a playwright app that you can use to view a series of snapshots.
+
+In addition you can use [Playwright Inspector](https://playwright.dev/docs/debug#playwright-inspector) to debug tests, which is a debugger that Playwright maintains. It automatically stops at each test suite, as well as each test case within them. As a result, you can debug a specific test suite by running `pnpm test:e2e:inspector -- {testName}`
+
+### Troubleshooting A11y
+
+In the event the end-to-end tests find an A11y violation, the playwright report will contain more information. Such as the description of the violation, a link to Deque University that will explain the violation as well as some ways to fix it, and finally the HTML that is causing the violation.
+
+You can access the playwright report by first running `pnpm test:e2e`. After it has completed, you can run `pnpm exec playwright show-report` to see the HTML report, or simply open the `index.html` file under `apps/web/playwright-report`.
 
 ## FAQ
 

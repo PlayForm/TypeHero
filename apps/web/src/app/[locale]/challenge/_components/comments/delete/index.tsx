@@ -1,55 +1,32 @@
-import {
-  Dialog,
-  DialogContent,
-  DialogTrigger,
-  type DialogTriggerProps,
-} from '@radix-ui/react-dialog';
-import { useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
-import { getRelativeTime } from '~/utils/relativeTime';
-import { deleteComment } from '../comment.action';
-import { type PaginatedComments } from '../getCommentRouteData';
+import type { DialogTriggerProps } from '@radix-ui/react-dialog';
 import { Button } from '@repo/ui/components/button';
-import { TypographyLarge } from '@repo/ui/components/typography/large';
+import { Dialog, DialogContent, DialogTrigger } from '@repo/ui/components/dialog';
+import { Markdown } from '@repo/ui/components/markdown';
 import { TypographyP } from '@repo/ui/components/paragraph';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@repo/ui/components/tooltip';
-import { Markdown } from '@repo/ui/components/markdown';
-import { toast } from '@repo/ui/components/use-toast';
+import { TypographyLarge } from '@repo/ui/components/typography/large';
+
+import { useState } from 'react';
+import { getRelativeTime } from '~/utils/relativeTime';
+
+import { type PaginatedComments } from '../getCommentRouteData';
 
 interface CommentDeleteDialogProps extends DialogTriggerProps {
   comment: PaginatedComments['comments'][number];
-  queryKey?: (number | string)[];
+  deleteComment: (commentId: number) => Promise<void>;
 }
 
 export function CommentDeleteDialog({
   children,
   comment,
-  queryKey,
+  deleteComment,
   ...props
 }: CommentDeleteDialogProps) {
-  const queryClient = useQueryClient();
   const [isOpen, setIsOpen] = useState(false);
 
   async function handleDeleteComment() {
-    try {
-      await deleteComment(comment.id);
-      toast({
-        title: 'Comment Deleted',
-        variant: 'success',
-        description: 'The comment was successfully deleted.',
-      });
-    } catch (e) {
-      // todo: log on a dump service.
-      console.log(e);
-      toast({
-        title: 'Uh Oh!',
-        variant: 'destructive',
-        description: 'An error occurred while trying to delete the comment.',
-      });
-    } finally {
-      queryClient.invalidateQueries(queryKey);
-      setIsOpen(!isOpen);
-    }
+    await deleteComment(comment.id);
+    setIsOpen(!isOpen);
   }
 
   return (

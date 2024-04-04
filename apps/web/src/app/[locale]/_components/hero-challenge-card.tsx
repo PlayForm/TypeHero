@@ -2,6 +2,7 @@ import type { Difficulty } from '@repo/db/types';
 import { clsx } from 'clsx';
 import { motion, type SVGMotionProps } from 'framer-motion';
 import type { ReactNode } from 'react';
+import { useScopedI18n } from '~/locales/client';
 
 function getRandomWidth() {
   const min = 100;
@@ -27,6 +28,8 @@ const COLORS_BY_DIFFICULTY = {
   MEDIUM: 'dark:bg-yellow-300 bg-yellow-600',
   HARD: 'dark:bg-red-300 bg-red-600',
   EXTREME: 'dark:bg-orange-300 bg-orange-600',
+  // this will never actually be used
+  EVENT: 'dark:bg-orange-300 bg-orange-600',
 };
 
 const codeLineProps = {
@@ -42,8 +45,10 @@ export function HeroChallengeCard({
   prompt,
   title,
   className,
-  difficulty,
+  difficulty = 'HARD',
 }: FakeChallengeCardProps) {
+  const t = useScopedI18n('general');
+
   return (
     <div
       className={clsx(className, {
@@ -54,13 +59,11 @@ export function HeroChallengeCard({
       <p className="translate-x-1 text-lg font-medium">{title}</p>
       <div className="flex gap-3">
         <div
-          className={`text-primary-foreground inline-flex w-fit translate-x-1 items-center rounded-full border border-transparent px-2.5 py-0.5 text-xs font-semibold duration-300 group-hover/card:-translate-x-0 group-hover/card:-translate-y-1 group-hover/card:shadow-[0.5rem_0.5rem_0.25rem_-0.25rem_#0004] ${
-            COLORS_BY_DIFFICULTY[difficulty || 'HARD']
-          }`}
+          className={`inline-flex w-fit translate-x-1 items-center rounded-full border border-transparent px-2.5 py-0.5 text-xs font-semibold text-white duration-300 group-hover/card:-translate-x-0 group-hover/card:-translate-y-1 group-hover/card:shadow-[0.5rem_0.5rem_0.25rem_-0.25rem_#0004] dark:text-black ${COLORS_BY_DIFFICULTY[difficulty]}`}
         >
-          {difficulty || 'HARD'}
+          {t(`difficulty.${difficulty}`).toUpperCase()}
         </div>
-        <div className="flex w-fit items-center justify-center rounded-full bg-transparent bg-zinc-300 px-2.5 py-1 pl-1.5 pr-2 text-xs font-bold text-neutral-700 duration-300 group-hover/card:-translate-x-1 group-hover/card:-translate-y-1 group-hover/card:shadow-[0.5rem_0.5rem_0.25rem_-0.25rem_#0004] dark:bg-zinc-700 dark:text-white">
+        <div className="flex w-fit items-center justify-center rounded-full bg-transparent bg-zinc-600 px-2.5 py-1 pl-1.5 pr-2 text-xs font-bold text-neutral-50 duration-300 group-hover/card:-translate-x-1 group-hover/card:-translate-y-1 group-hover/card:shadow-[0.5rem_0.5rem_0.25rem_-0.25rem_#0004] dark:bg-zinc-700 dark:text-white">
           @{username}
         </div>
       </div>
@@ -76,62 +79,62 @@ export function HeroChallengeCard({
           <motion.rect
             {...codeLineProps}
             animate={{ width: getRandomWidth() }}
-            fill="#2B2B32"
+            className="fill-[#ABABB2] dark:fill-neutral-700"
             y="0"
           />
           <motion.rect
             {...codeLineProps}
             animate={{ width: getRandomWidth() }}
-            fill="#544048"
+            className="fill-[#A48088] dark:fill-[#544048]"
             y="19"
           />
           <motion.rect
             {...codeLineProps}
             animate={{ width: getRandomWidth() }}
-            fill="#544048"
+            className="fill-[#A48088] dark:fill-[#544048]"
             y="38"
           />
           <motion.rect
             {...codeLineProps}
             animate={{ width: getRandomWidth() }}
-            fill="#404F54"
+            className="fill-[#809F94] dark:fill-[#404F54]"
             y="57"
           />
           <motion.rect
             {...codeLineProps}
             animate={{ width: getRandomWidth() }}
-            fill="#2B2B32"
+            className="fill-[#ABABB2] dark:fill-neutral-700"
             y="90"
           />
           <motion.rect
             {...codeLineProps}
             animate={{ width: getRandomWidth() }}
-            fill="#2B2B32"
+            className="fill-[#ABABB2] dark:fill-neutral-700"
             y="109"
           />
           <motion.rect
             {...codeLineProps}
             animate={{ width: getRandomWidth() }}
-            fill="#544048"
+            className="fill-[#A48088] dark:fill-[#544048]"
             transition={{ delay: 0.3, duration: 0.5 }}
             y="128"
           />
           <motion.rect
             {...codeLineProps}
             animate={{ width: getRandomWidth() }}
-            fill="#544048"
+            className="fill-[#A48088] dark:fill-[#544048]"
             y="147"
           />
           <motion.rect
             {...codeLineProps}
             animate={{ width: getRandomWidth() }}
-            fill="#404F54"
+            className="fill-[#809F94] dark:fill-[#404F54]"
             y="166"
           />
           <motion.rect
             {...codeLineProps}
             animate={{ width: getRandomWidth() }}
-            fill="#404F54"
+            className="fill-[#809F94] dark:fill-[#404F54]"
             y="184"
           />
         </svg>

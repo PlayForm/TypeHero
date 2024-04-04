@@ -1,74 +1,145 @@
 'use server';
 
-import { getServerAuthSession } from '@repo/auth/server';
+import { auth, type Session } from '@repo/auth/server';
 import { prisma } from '@repo/db';
+import { revalidateTag } from 'next/cache';
+import { cache } from 'react';
+import { track } from '@vercel/analytics/server';
 
 /**
  * Enrolls the session user in the track given a track id.
  * @param id The track id.
  */
-export async function enrollUserInTrack(id: number) {
-  const session = await getServerAuthSession();
-  return prisma.track.update({
+export async function enrollUserInTrack(id: number, slug: string) {
+  const session = await auth();
+  if (!session) {
+    throw new Error('User is not logged in');
+  }
+
+  await prisma.track.update({
     where: {
       id,
     },
     data: {
       enrolledUsers: {
         connect: {
-          id: session?.user.id,
+          id: session?.user?.id,
         },
       },
     },
   });
+
+  track?.('track-action', { action: 'enrolled', slug });
+  revalidateTag(`track-${id}-detail`);
 }
 
 /**
  * Un-enrolls the session user in the track given a track id.
  * @param id The track id.
  */
-export async function unenrollUserFromTrack(id: number) {
-  const session = await getServerAuthSession();
-  return prisma.track.update({
+export async function unenrollUserFromTrack(id: number, slug: string) {
+  const session = await auth();
+  if (!session) {
+    throw new Error('User is not logged in');
+  }
+
+  await prisma.track.update({
     where: {
       id,
     },
     data: {
       enrolledUsers: {
         disconnect: {
-          id: session?.user.id,
+          id: session?.user?.id,
         },
       },
     },
   });
+
+  track?.('track-action', { action: 'unenrolled', slug });
+  revalidateTag(`track-${id}-detail`);
 }
 
 /**
  * Fetches the track details given a track id.
  * @param id The track id.
  */
-export async function getTrackDetails(id: number) {
-  const session = await getServerAuthSession();
-
-  return prisma.track.findUnique({
+export const getTrackDetails = cache(async (slug: string) => {
+  const session = await auth();
+  return prisma.track.findFirstOrThrow({
     where: {
-      id,
+      slug,
     },
     include: {
-      _count: {
-        select: {
-          enrolledUsers: true,
+      trackChallenges: {
+        orderBy: {
+          orderId: 'asc',
+        },
+        include: {
+          challenge: {
+            include: {
+              submission: {
+                where: {
+                  userId: session?.user?.id ?? '',
+                },
+              },
+              user: {
+                select: {
+                  name: true,
+                },
+              },
+            },
+          },
         },
       },
-      trackChallenges: true,
       enrolledUsers: {
         where: {
-          id: session?.user.id,
+          id: session?.user?.id ?? '',
         },
         select: {
           id: true,
         },
       },
+    },
+  });
+});
+
+export type EnrolledTracks = Awaited<ReturnType<typeof getUserEnrolledTracks>>;
+
+/**
+ * Fetches user enrolled tracks based on current session.
+ */
+export async function getUserEnrolledTracks(session: Session) {
+  return prisma.track.findMany({
+    where: {
+      enrolledUsers: {
+        some: {
+          id: session.user?.id,
+        },
+      },
+    },
+    include: {
+      trackChallenges: {
+        include: {
+          challenge: {
+            include: {
+              submission: {
+                where: {
+                  userId: session.user?.id,
+                },
+              },
+            },
+          },
+        },
+      },
+      _count: {
+        select: {
+          enrolledUsers: true,
+        },
+      },
+    },
+    orderBy: {
+      name: 'asc',
     },
   });
 }

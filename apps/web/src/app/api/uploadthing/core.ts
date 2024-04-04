@@ -1,8 +1,19 @@
 import { createUploadthing, type FileRouter } from 'uploadthing/next';
-import { getServerAuthSession, authOptions } from '@repo/auth/server';
 import { prisma } from '@repo/db';
+import { auth } from '@repo/auth/server';
 
-const f = createUploadthing();
+const f = createUploadthing({
+  /**
+   * Log out more information about the error, but don't return it to the client
+   * @see https://docs.uploadthing.com/errors#error-formatting
+   */
+  errorFormatter: (err) => {
+    console.log('Error uploading file', err.message);
+    console.log('  - Above error caused by:', err.cause);
+
+    return { message: err.message };
+  },
+});
 
 type ValidFileTypes = 'audio' | 'blob' | 'image' | 'video';
 type FileRouterInput =
@@ -32,10 +43,10 @@ export const ourFileRouter = {
   })
     // Set permissions and file types for this FileRoute
     .middleware(async () => {
-      const session = await getServerAuthSession();
+      const session = await auth();
 
       // If you throw, the user will not be able to upload
-      if (!session?.user.id) throw new Error('Unauthorized');
+      if (!session?.user?.id) throw new Error('Unauthorized');
 
       // Whatever is returned here is accessible in onUploadComplete as `metadata`
       return { userId: session.user.id };

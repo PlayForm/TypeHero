@@ -45,14 +45,10 @@ export function SettingsForm() {
   const isVimBindings = form.getValues().bindings === 'vim';
 
   function onSubmit(data: FormSchema) {
-    updateSettings(data);
+    updateSettings({ ...settings, ...data });
     toast({
       title: 'Settings updated!',
-      description: (
-        <pre className="mt-2 w-[340px] rounded-md bg-slate-950 p-4">
-          <code className="text-white">{JSON.stringify(data, null, 2)}</code>
-        </pre>
-      ),
+      variant: 'success',
     });
   }
 
@@ -150,7 +146,9 @@ export function SettingsForm() {
 
         <DialogFooter className="mt-3">
           <DialogPrimitive.Close asChild>
-            <Button type="submit">Save</Button>
+            <Button type="submit" disabled={form.formState.isSubmitting}>
+              Save
+            </Button>
           </DialogPrimitive.Close>
         </DialogFooter>
       </form>

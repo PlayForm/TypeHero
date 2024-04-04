@@ -1,6 +1,9 @@
 'use client';
 
 import type { Challenge, Difficulty } from '@repo/db/types';
+import { Button } from '@repo/ui/components/button';
+import { Markdown } from '@repo/ui/components/markdown';
+import { Reply } from '@repo/ui/icons';
 import clsx from 'clsx';
 import {
   motion,
@@ -9,16 +12,13 @@ import {
   type MotionStyle,
   type MotionValue,
 } from 'framer-motion';
-import { Reply } from '@repo/ui/icons';
 import { useTheme } from 'next-themes';
 import Image, { type StaticImageData } from 'next/image';
 import { useEffect, useState, type MouseEvent } from 'react';
 import { useInView } from 'react-intersection-observer';
-import { Steps } from '~/components/wizard/Steps';
 import { useIsMobile } from '~/utils/useIsMobile';
-import { TrackChallenge } from '../tracks/_components/track-challenge-card';
-import { Button } from '@repo/ui/components/button';
-import { Markdown } from '@repo/ui/components/markdown';
+import { MockTrackChallenge } from '../tracks/_components/track-challenge-card';
+import { Steps } from '../wizard/_components/Steps';
 
 type WrapperStyle = MotionStyle & {
   '--x': MotionValue<string>;
@@ -73,8 +73,8 @@ function FeatureCard({
           bgClass,
         )}
       >
-        <div className="mx-10 my-10 min-h-[450px] w-full">
-          <div className="flex w-4/6 flex-col gap-3">
+        <div className="m-6 min-h-[330px] w-full sm:m-10 md:min-h-[450px]">
+          <div className="flex w-5/6 flex-col gap-3 sm:w-4/6 md:w-4/5 xl:w-4/6">
             <h2 className="text-xl font-bold tracking-tight md:text-xl">{title}</h2>
             <p className="text-sm leading-5 text-zinc-600 dark:text-zinc-400 sm:text-base sm:leading-7">
               {description}
@@ -391,7 +391,7 @@ export function CollaborativeEnvironmentCard(props: CardProps) {
     <FeatureCard {...props}>
       <div
         ref={ref}
-        className="absolute inset-0 left-[23px] top-[30%] flex w-[100%] flex-col gap-3 pt-4 max-md:scale-90 sm:top-[35%] md:left-[37px] md:top-[30%]"
+        className="absolute inset-0 left-[23px] top-[25%] flex w-[100%] flex-col gap-3 pt-4 max-md:scale-90 sm:left-[33px] sm:top-[35%] md:left-[37px] md:top-[30%]"
       >
         <div
           className={clsx(
@@ -434,11 +434,18 @@ export function CollaborativeEnvironmentCard(props: CardProps) {
             <div className="text-xs text-neutral-500">just now</div>
           </div>
           <Image
-            className={clsx({ amoguwusus: inView }, 'opacity-0')}
+            className={clsx({ amoguwusus: inView }, 'hidden opacity-0 xl:block')}
             alt="amoguwuawa"
             src="/Red.webp"
             height="198"
             width="150"
+          />
+          <Image
+            className={clsx({ amoguwusus: inView }, 'opacity-0 xl:hidden')}
+            alt="amoguwuawa"
+            src="/Red.webp"
+            height="66"
+            width="50"
           />
         </div>
       </div>
@@ -451,21 +458,20 @@ export function CuratedTracksCard(props: CardProps) {
     <FeatureCard {...props}>
       <div
         className={clsx(
-          'absolute inset-0 top-[50%] flex flex-col items-center justify-center',
-          'max-md:scale-110 md:top-[38%]',
+          'absolute inset-0 top-[60%] flex flex-col items-center justify-center sm:top-[69%]',
+          'max-md:scale-110 md:top-[42%] lg:top-[38%]',
         )}
       >
-        <div className="flex w-[69%] items-center justify-between gap-3 rounded-b-lg rounded-t-xl bg-neutral-500/10 p-2 pl-3">
+        <div className="flex w-[69%] items-center justify-between gap-3 rounded-b-lg rounded-t-xl bg-neutral-500/10 p-2 pl-3 md:w-[82%] xl:w-[69%]">
           <span className="flex items-center gap-1 text-xs font-semibold tracking-wide">
-            Typescript Foundations
+            TypeScript Foundations
           </span>
         </div>
-        <div className="flex w-[69%] flex-col">
+        <div className="flex w-[69%] flex-col md:w-[82%] xl:w-[69%]">
           {mockChallenges.map((mockChallenge) => (
-            <TrackChallenge
+            <MockTrackChallenge
               key={`mock-${mockChallenge.id}`}
               challenge={mockChallenge as Challenge}
-              mock
             />
           ))}
         </div>

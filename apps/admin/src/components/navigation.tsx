@@ -1,7 +1,6 @@
 'use client';
 
 import { signIn, signOut, useSession } from '@repo/auth/react';
-import { RoleTypes } from '@repo/db/types';
 import { Button } from '@repo/ui/components/button';
 import {
   DropdownMenu,
@@ -14,37 +13,28 @@ import { useEffect, useState } from 'react';
 
 export function Navigation() {
   return (
-    <header className="z-10 w-full">
-      <nav className="container flex h-14 items-center">
+    <header className="z-0 w-full">
+      <nav className="flex h-14 items-center px-4">
         <div className="flex w-full items-center justify-between">
           <div className="relative flex gap-3">
             <a className="flex items-center space-x-2 duration-300" href="/">
               <svg
                 className="h-8 w-8 rounded-md bg-[#3178C6] p-[2px]"
-                viewBox="0 0 512 512"
+                viewBox="0 0 38 38"
+                fill="none"
                 xmlns="http://www.w3.org/2000/svg"
               >
-                <g clipPath="url(#clip0_1_2)">
-                  <path
-                    d="M462 0H50C22.3858 0 0 22.3858 0 50V462C0 489.614 22.3858 512 50 512H462C489.614 512 512 489.614 512 462V50C512 22.3858 489.614 0 462 0Z"
-                    fill="#3178C6"
-                  />
-                  <path
-                    clipRule="evenodd"
-                    d="M239.78 284.082H304V243H125V284.082H188.906V467H239.78V284.082Z"
-                    fill="white"
-                    fillRule="evenodd"
-                  />
-                  <path
-                    d="M303.13 466.986V242.986H349.72V335.818H418.427V242.986H465.13V466.986H418.427V373.827H349.72V466.986H303.13Z"
-                    fill="white"
-                  />
-                </g>
-                <defs>
-                  <clipPath id="clip0_1_2">
-                    <rect fill="white" height="512" width="512" />
-                  </clipPath>
-                </defs>
+                <rect width="38" height="38" rx="4.5" fill="#3178C6" />
+                <path
+                  fillRule="evenodd"
+                  clipRule="evenodd"
+                  d="M15.6947 20.9344H20V18H8V20.9344H12.2842V34H15.6947V20.9344Z"
+                  fill="white"
+                />
+                <path
+                  d="M22 34V18H25.4511V24.6309H30.5405V18H34V34H30.5405V27.3458H25.4511V34H22Z"
+                  fill="white"
+                />
               </svg>
 
               <span className="font-bold leading-3">
@@ -96,10 +86,6 @@ function ThemeButton() {
 function LoginButton() {
   const [loading, setLoading] = useState(false);
   const { data: session, status } = useSession();
-
-  const isAdmin = session?.user.role.includes(RoleTypes.ADMIN);
-  const isMod = session?.user.role.includes(RoleTypes.MODERATOR);
-  const isAdminOrMod = isAdmin || isMod;
 
   // NOTE: 1. loading == true -> 2. signIn() -> 3. session status == 'loading' (loading == false)
   const handleSignIn = async () => {

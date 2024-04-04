@@ -1,5 +1,9 @@
 'use server';
+
 import { prisma } from '@repo/db';
+import { revalidateTag } from 'next/cache';
+
+export const createCacheKeyForBookmarksTab = (userId: string) => `${userId}-bookmarked-challenges`;
 
 export async function addOrRemoveBookmark(
   challengeId: number,
@@ -27,4 +31,6 @@ export async function addOrRemoveBookmark(
       },
     });
   }
+
+  revalidateTag(createCacheKeyForBookmarksTab(userId));
 }

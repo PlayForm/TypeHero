@@ -1,21 +1,9 @@
 'use client';
 
 import { useSession } from '@repo/auth/react';
-import { Bookmark as BookmarkIcon, Flag, Share } from '@repo/ui/icons';
-import { clsx } from 'clsx';
-import { debounce } from 'lodash';
-import Link from 'next/link';
-import { useRef, useState } from 'react';
-import { type ChallengeRouteData } from '~/app/[locale]/challenge/[id]/getChallengeRouteData';
-import { ReportDialog } from '~/components/ReportDialog';
-import { getRelativeTime } from '~/utils/relativeTime';
-import { addOrRemoveBookmark } from '../bookmark.action';
-import { ShareForm } from '../share-form';
-import { Vote } from '../vote';
+import { cn } from '@repo/ui/cn';
 import { ActionMenu } from '@repo/ui/components/action-menu';
-import { TypographyH3 } from '@repo/ui/components/typography/h3';
-import { UserBadge } from '@repo/ui/components/user-badge';
-import { DifficultyBadge } from '@repo/ui/components/difficulty-badge';
+import { Button, buttonVariants } from '@repo/ui/components/button';
 import {
   Dialog,
   DialogContent,
@@ -23,11 +11,27 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@repo/ui/components/dialog';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@repo/ui/components/tooltip';
+import { DifficultyBadge } from '@repo/ui/components/difficulty-badge';
 import { Markdown } from '@repo/ui/components/markdown';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@repo/ui/components/tooltip';
+import { TypographyH3 } from '@repo/ui/components/typography/h3';
+import { UserBadge } from '@repo/ui/components/user-badge';
+import { Bookmark as BookmarkIcon, Calendar, CheckCircle, Flag, Share } from '@repo/ui/icons';
+import clsx from 'clsx';
+import { debounce } from 'lodash';
+import Link from 'next/link';
+import { useMemo, useRef, useState } from 'react';
+import { type ChallengeRouteData } from '~/app/[locale]/challenge/[slug]/getChallengeRouteData';
+import { ReportDialog } from '~/components/ReportDialog';
+import { getRelativeTime } from '~/utils/relativeTime';
+import { addOrRemoveBookmark } from '../bookmark.action';
+import { ShareForm } from '../share-form';
+import { Vote } from '../vote';
+import { AOT_CHALLENGES } from '../../[slug]/aot-slugs';
+import { Suggestions } from './suggestions';
 
 interface Props {
-  challenge: ChallengeRouteData;
+  challenge: ChallengeRouteData['challenge'];
 }
 
 export interface FormValues {
@@ -40,6 +44,8 @@ export interface FormValues {
 export function Description({ challenge }: Props) {
   const [hasBookmarked, setHasBookmarked] = useState(challenge.bookmark.length > 0);
   const session = useSession();
+
+  const isAotChallenge = useMemo(() => AOT_CHALLENGES.includes(challenge.slug), [challenge.slug]);
 
   const debouncedBookmark = useRef(
     debounce(async (challengeId: number, userId: string, shouldBookmark: boolean) => {
@@ -56,7 +62,7 @@ export function Description({ challenge }: Props) {
 
   return (
     <div className="custom-scrollable-element h-full overflow-y-auto px-4 pb-36 pt-3">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center">
         <TypographyH3 className="mr-auto max-w-[75%] items-center truncate text-2xl font-bold">
           {challenge.name}
         </TypographyH3>
@@ -78,27 +84,52 @@ export function Description({ challenge }: Props) {
       {/* Author & Time */}
       <div className="mt-2 flex items-center gap-4">
         <UserBadge username={challenge.user.name} linkComponent={Link} />
-        <span className="text-muted-foreground -ml-1 text-xs">
-          {getRelativeTime(challenge.updatedAt)}
-        </span>
+        <div className="text-muted-foreground flex items-center gap-2">
+          <Calendar className=" h-4 w-4" />
+          <span className="text-xs">Last updated {getRelativeTime(challenge.updatedAt)}</span>
+        </div>
       </div>
       {/* Difficulty & Action Buttons */}
       <div className="mt-3 flex items-center gap-3">
-        <DifficultyBadge difficulty={challenge.difficulty} />
+        {!isAotChallenge ? <DifficultyBadge difficulty={challenge.difficulty} /> : null}
+        {challenge.hasSolved ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <CheckCircle className="stroke-green-600 dark:stroke-green-300" size={20} />
+            </TooltipTrigger>
+            <TooltipContent>
+              <p>Solved</p>
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
+        <Vote
+          voteCount={challenge._count.vote}
+          initialHasVoted={challenge.vote.length > 0}
+          disabled={!session?.data?.user?.id}
+          rootType="CHALLENGE"
+          rootId={challenge?.id}
+        />
         <Dialog>
           <DialogTrigger>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Share className="h-4 w-4 stroke-zinc-500 group-hover:stroke-zinc-600 dark:stroke-zinc-300 group-hover:dark:stroke-zinc-100" />
+                <div
+                  className={cn(
+                    buttonVariants({ variant: 'secondary', size: 'xs' }),
+                    'rounded-full',
+                  )}
+                >
+                  <Share className="h-4 w-4" />
+                </div>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Share challenge</p>
+                <p>Share</p>
               </TooltipContent>
             </Tooltip>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Share this challenge</DialogTitle>
+              <DialogTitle>Share</DialogTitle>
             </DialogHeader>
             <div className="pt-4">
               <ShareForm />
@@ -107,9 +138,16 @@ export function Description({ challenge }: Props) {
         </Dialog>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button
-              className="group flex h-6 items-center rounded-full bg-zinc-200 px-3 focus:outline-none focus-visible:ring-2 disabled:cursor-not-allowed disabled:bg-zinc-100 dark:bg-zinc-700 disabled:dark:bg-zinc-700/50"
-              disabled={!session.data?.user.id}
+            <Button
+              variant="secondary"
+              size="xs"
+              className={clsx(
+                'border border-transparent [&:not(:disabled)]:hover:border-blue-500 [&:not(:disabled)]:hover:text-blue-500',
+                {
+                  'border-blue-500 text-blue-500': hasBookmarked,
+                },
+              )}
+              disabled={!session.data?.user?.id}
               onClick={() => {
                 let shouldBookmark = false;
                 if (hasBookmarked) {
@@ -119,41 +157,27 @@ export function Description({ challenge }: Props) {
                   shouldBookmark = true;
                   setHasBookmarked(true);
                 }
-                debouncedBookmark(challenge.id, session.data?.user.id!, shouldBookmark)?.catch(
+                debouncedBookmark(challenge.id, session.data?.user?.id!, shouldBookmark)?.catch(
                   (e) => {
                     console.error(e);
                   },
                 );
               }}
             >
-              <BookmarkIcon
-                className={clsx(
-                  {
-                    'fill-blue-500 stroke-blue-500': hasBookmarked,
-                    'stroke-zinc-500 group-hover:stroke-zinc-600 group-disabled:stroke-zinc-300 dark:stroke-zinc-300 group-hover:dark:stroke-zinc-100 group-disabled:dark:stroke-zinc-500/50':
-                      !hasBookmarked,
-                  },
-                  'h-4 w-4',
-                )}
-              />
-            </button>
+              <BookmarkIcon className="h-4 w-4" />
+            </Button>
           </TooltipTrigger>
           <TooltipContent>
-            <p>{session.data?.user.id ? 'Bookmark' : 'Login to Bookmark'}</p>
+            <p>{session.data?.user?.id ? 'Bookmark' : 'Login to Bookmark'}</p>
           </TooltipContent>
         </Tooltip>
-        <Vote
-          voteCount={challenge._count.vote}
-          initialHasVoted={challenge.vote.length > 0}
-          disabled={!session?.data?.user?.id}
-          rootType="CHALLENGE"
-          rootId={challenge?.id}
-        />
       </div>
       {/* Challenge Description */}
-      <div className="prose-invert prose-h3:text-xl mt-6 leading-8">
+      <div className="prose-invert prose-h3:text-xl mt-6 leading-7">
         <Markdown>{challenge.description}</Markdown>
       </div>
+      {/* More Challenges Suggestions */}
+      {!isAotChallenge && <Suggestions challengeId={challenge.id} />}
     </div>
   );
 }
