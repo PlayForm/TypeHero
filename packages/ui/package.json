@@ -72,7 +72,7 @@
     "@repo/lint": "workspace:*",
     "@repo/tsconfig": "workspace:*",
     "@types/react": "^18.2.20",
-    "eslint": "^8.45.0",
+    "eslint": "^9.26.0",
     "typescript": "^5.3.3"
   }
 }
