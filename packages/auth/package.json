@@ -37,7 +37,7 @@
     "@repo/lint": "workspace:*",
     "@repo/tsconfig": "workspace:*",
     "@types/node": "^20.4.2",
-    "eslint": "^8.45.0",
+    "eslint": "^9.26.0",
     "prisma": "^5.0.0",
     "tsup": "5.12.0",
     "typescript": "^5.3.3"
