@@ -31,7 +31,7 @@
     "typecheck": "turbo typecheck --continue"
   },
   "devDependencies": {
-    "ajv": "^8.12.0",
+    "ajv": "^8.18.0",
     "cspell": "^7.3.8",
     "markdownlint-cli2": "^0.10.0",
     "picocolors": "^1.0.0",
